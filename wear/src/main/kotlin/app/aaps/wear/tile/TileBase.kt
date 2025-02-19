@@ -37,7 +37,8 @@ import androidx.wear.tiles.TimelineBuilders.Timeline
 import androidx.wear.tiles.TimelineBuilders.TimelineEntry
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.rx.weardata.EventData
-import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.Preferences
 import app.aaps.wear.R
 import app.aaps.wear.comm.DataLayerListenerServiceWear
 import com.google.common.util.concurrent.ListenableFuture
@@ -62,7 +63,7 @@ interface TileSource {
 }
 
 open class Action(
-    val buttonText: String,
+    val buttonText: String? = null,
     val buttonTextSub: String? = null,
     val activityClass: String,
     @DrawableRes val iconRes: Int,
@@ -76,7 +77,7 @@ enum class WearControl {
 
 abstract class TileBase : TileService() {
 
-    @Inject lateinit var sp: SP
+    @Inject lateinit var preferences: Preferences
     @Inject lateinit var aapsLogger: AAPSLogger
 
     abstract val resourceVersion: String
@@ -122,6 +123,7 @@ abstract class TileBase : TileService() {
         return source.getValidFor()
     }
 
+    @Deprecated("Deprecated in Java")
     override fun onResourcesRequest(
         requestParams: ResourcesRequest
     ): ListenableFuture<Resources> = serviceScope.future {
@@ -243,14 +245,20 @@ abstract class TileBase : TileService() {
         val iconSize = dp(circleDiameter * ICON_SIZE_FRACTION)
         val text = action.buttonText
         val textSub = action.buttonTextSub
+        val image = Image.Builder()
+            .setWidth(iconSize)
+            .setHeight(iconSize)
+            .setResourceId(action.iconRes.toString())
+            .build()
+
+        if (text == null && textSub == null) {
+            return image
+        }
+
         val col = Column.Builder()
-            .addContent(
-                Image.Builder()
-                    .setWidth(iconSize)
-                    .setHeight(iconSize)
-                    .setResourceId(action.iconRes.toString())
-                    .build()
-            ).addContent(
+            .addContent(image)
+        if (text != null) {
+            col.addContent(
                 Text.Builder()
                     .setText(text)
                     .setFontStyle(
@@ -262,6 +270,7 @@ abstract class TileBase : TileService() {
                     )
                     .build()
             )
+        }
         if (textSub != null) {
             col.addContent(
                 Text.Builder()
@@ -296,10 +305,10 @@ abstract class TileBase : TileService() {
     }
 
     private fun getWearControl(): WearControl {
-        if (!sp.contains(R.string.key_wear_control)) {
+        if (preferences.getIfExists(BooleanKey.WearControl) == null) {
             return WearControl.NO_DATA
         }
-        val wearControlPref = sp.getBoolean(R.string.key_wear_control, false)
+        val wearControlPref = preferences.get(BooleanKey.WearControl)
         if (wearControlPref) {
             return WearControl.ENABLED
         }
